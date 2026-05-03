@@ -12,7 +12,14 @@ headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
 def query(payload):
     response = requests.post(API_URL, headers=headers, json=payload)
-    return response.json()
+    # ตรวจสอบว่า HTTP Status Code ปกติไหม (200 คือโอเค)
+    if response.status_code != 200:
+        return {"error": f"API Error {response.status_code}: {response.text}"}
+    
+    try:
+        return response.json()
+    except:
+        return {"error": "ไม่สามารถแปลงข้อมูลเป็น JSON ได้: " + response.text}
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
