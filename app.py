@@ -7,7 +7,7 @@ st.title("🤖 Qwen2.5-1.5B (via HF API)")
 # แนะนำให้ใส่ Token ใน Streamlit Secrets ตอน Deploy จริง
 # แต่สำหรับการทดสอบเบื้องต้นสามารถวางตรงๆ หรือใช้ st.text_input ได้
 HF_TOKEN = st.sidebar.text_input("ใส่ Hugging Face Token", type="password")
-API_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-1.5B-Instruct"
+API_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct"
 
 def query(payload):
     # ย้าย headers มาไว้ข้างในเพื่อให้ใช้ Token ล่าสุดที่กรอกใน sidebar
