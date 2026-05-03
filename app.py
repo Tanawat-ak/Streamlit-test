@@ -8,18 +8,24 @@ st.title("🤖 Qwen2.5-1.5B (via HF API)")
 # แต่สำหรับการทดสอบเบื้องต้นสามารถวางตรงๆ หรือใช้ st.text_input ได้
 HF_TOKEN = st.sidebar.text_input("ใส่ Hugging Face Token", type="password")
 API_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-1.5B-Instruct"
-headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
 def query(payload):
-    response = requests.post(API_URL, headers=headers, json=payload)
-    # ตรวจสอบว่า HTTP Status Code ปกติไหม (200 คือโอเค)
-    if response.status_code != 200:
-        return {"error": f"API Error {response.status_code}: {response.text}"}
+    # ย้าย headers มาไว้ข้างในเพื่อให้ใช้ Token ล่าสุดที่กรอกใน sidebar
+    current_headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     
     try:
+        response = requests.post(API_URL, headers=current_headers, json=payload, timeout=10)
+        
+        # ถ้ายัง 404 ให้ลองเปลี่ยน URL สำรอง
+        if response.status_code == 404:
+             return {"error": "หาโมเดลไม่เจอ (404) ตรวจสอบ API_URL หรือ Token อีกครั้ง"}
+             
+        if response.status_code != 200:
+            return {"error": f"API Error {response.status_code}: {response.text}"}
+            
         return response.json()
-    except:
-        return {"error": "ไม่สามารถแปลงข้อมูลเป็น JSON ได้: " + response.text}
+    except Exception as e:
+        return {"error": f"Connection Error: {str(e)}"}
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
