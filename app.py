@@ -1,65 +1,58 @@
 import streamlit as st
-import requests
+from huggingface_hub import InferenceClient
 
 st.set_page_config(page_title="Qwen2.5 API Chatbot", layout="centered")
-st.title("🤖 Qwen2.5-1.5B (via HF API)")
+st.title("🤖 Qwen2.5 Chatbot (via HF Hub)")
 
-# แนะนำให้ใส่ Token ใน Streamlit Secrets ตอน Deploy จริง
-# แต่สำหรับการทดสอบเบื้องต้นสามารถวางตรงๆ หรือใช้ st.text_input ได้
+# รับ Token จาก Sidebar
 HF_TOKEN = st.sidebar.text_input("ใส่ Hugging Face Token", type="password")
-API_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct"
 
-def query(payload):
-    # ย้าย headers มาไว้ข้างในเพื่อให้ใช้ Token ล่าสุดที่กรอกใน sidebar
-    current_headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    
-    try:
-        response = requests.post(API_URL, headers=current_headers, json=payload, timeout=10)
-        
-        # ถ้ายัง 404 ให้ลองเปลี่ยน URL สำรอง
-        if response.status_code == 404:
-             return {"error": "หาโมเดลไม่เจอ (404) ตรวจสอบ API_URL หรือ Token อีกครั้ง"}
-             
-        if response.status_code != 200:
-            return {"error": f"API Error {response.status_code}: {response.text}"}
-            
-        return response.json()
-    except Exception as e:
-        return {"error": f"Connection Error: {str(e)}"}
+# กำหนดชื่อโมเดล (แนะนำ 72B-Instruct หรือ 7B-Instruct เพราะ HF มักจะเปิดให้ใช้ฟรี)
+MODEL_ID = "Qwen/Qwen2.5-72B-Instruct" 
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# แสดงประวัติการสนทนา
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    # ข้าม system prompt ไม่ต้องแสดงบนหน้าจอ
+    if message["role"] != "system":
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
 if prompt := st.chat_input("พิมพ์ข้อความที่นี่..."):
     if not HF_TOKEN:
         st.error("กรุณาใส่ Hugging Face Token ที่แถบด้านซ้ายก่อนครับ")
     else:
+        # เก็บข้อความผู้ใช้
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             with st.spinner("กำลังคิด..."):
-                # สร้าง Prompt ตาม Format ของ Qwen
-                full_prompt = f"<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                
-                output = query({
-                    "inputs": full_prompt,
-                    "parameters": {"max_new_tokens": 512, "return_full_text": False}
-                })
-                
-                # ตรวจสอบว่า API ส่ง Error มาหรือไม่ (เช่น Model กำลังโหลด)
-                if isinstance(output, dict) and "error" in output:
-                    response = f"❌ Error: {output['error']}"
-                else:
-                    try:
-                        response = output[0]['generated_text']
-                    except:
-                        response = "ขออภัย เกิดข้อผิดพลาดในการดึงข้อมูล"
-                
-                st.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                try:
+                    # เรียกใช้ InferenceClient แทน requests
+                    client = InferenceClient(model=MODEL_ID, token=HF_TOKEN.strip())
+                    
+                    # เตรียมข้อมูลสนทนา (ใส่ System Prompt ไว้เป็นบริบท)
+                    chat_history = [{"role": "system", "content": "You are a helpful assistant."}]
+                    # นำประวัติใน session มาต่อท้าย (กรองเอาเฉพาะ role ที่ถูกต้อง)
+                    chat_history.extend([msg for msg in st.session_state.messages if msg["role"] in ["user", "assistant"]])
+                    
+                    # เรียกใช้งาน Chat API
+                    response = client.chat_completion(
+                        messages=chat_history,
+                        max_tokens=512
+                    )
+                    
+                    # ดึงข้อความตอบกลับ
+                    output_text = response.choices[0].message.content
+                    
+                    st.markdown(output_text)
+                    st.session_state.messages.append({"role": "assistant", "content": output_text})
+                    
+                except Exception as e:
+                    st.error(f"❌ เกิดข้อผิดพลาดจาก API: {str(e)}")
+                    # ลบข้อความ user ล่าสุดออกถ้า API พัง จะได้พิมพ์ใหม่ได้
+                    st.session_state.messages.pop()
